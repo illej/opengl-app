@@ -8,14 +8,32 @@
 #define MATH_3D_IMPLEMENTATION
 #include <math_3d.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
+#include "renderer.h"
+
+/*
+ * TODO: replace 'unsigned int' with 'u32'
+ */
 
 static bool g__running = true;
-static const float g__triangle_vertices[] = {
+static float g__triangle_vertices[] = {
     -1.0f, -1.0f, 0.0f,
     1.0f, -1.0f, 0.0f,
     0.0f, 1.0f, 0.0f
 };
-static const float g__cube_vertices[] = {
+static float g__square_vertices[] = {
+    -0.5f, -0.5f, 0.0f, 0.0f, // 0 (anti-clockwise, bottom-left)
+     0.5f, -0.5f, 1.0f, 0.0f, // 1
+     0.5f,  0.5f, 1.0f, 1.0f, // 2
+    -0.5f,  0.5f, 0.0f, 1.0f  // 3
+};
+static unsigned int g__square_indices[] = {
+    0, 1, 2, // bottom-left triangle
+    2, 3, 0  // top-right triangle
+};
+static float g__cube_vertices[] = {
     -1.0f,-1.0f,-1.0f, // triangle 1 : begin
     -1.0f,-1.0f, 1.0f,
     -1.0f, 1.0f, 1.0f, // triangle 1 : end
@@ -53,7 +71,7 @@ static const float g__cube_vertices[] = {
     -1.0f, 1.0f, 1.0f,
     1.0f,-1.0f, 1.0f
 };
-static const float g__cube_colour_data[] = {
+static float g__cube_colour_data[] = {
     0.583f,  0.771f,  0.014f,
     0.609f,  0.115f,  0.436f,
     0.327f,  0.483f,  0.844f,
@@ -91,108 +109,6 @@ static const float g__cube_colour_data[] = {
     0.820f,  0.883f,  0.371f,
     0.982f,  0.099f,  0.879f
 };
-
-static char *
-read_file_to_str (char *file)
-{
-    size_t len = 0;
-    char *buf = NULL;
-    FILE *fp = fopen (file, "r");
-
-    if (fp)
-    {
-        fseek (fp, 0, SEEK_END);
-        len = ftell (fp);
-        fseek (fp, 0, SEEK_SET);
-        buf = malloc (len);
-        if (buf)
-        {
-            fread (buf, 1, len, fp);
-        }
-        fclose (fp);
-    }
-
-    if (!buf)
-    {
-        printf ("failed to read file \"%s\"\n", file);
-    }
-
-    return buf;
-}
-
-static unsigned int
-compile_shader (unsigned int type, char *source)
-{
-    unsigned int id = glCreateShader (type);
-    glShaderSource (id, 1/* count */, &source, NULL/* length */);
-    glCompileShader (id);
-
-    int result;
-    glGetShaderiv (id, GL_COMPILE_STATUS, &result);
-    if (result == GL_FALSE)
-    {
-        int len;
-        glGetShaderiv (id, GL_INFO_LOG_LENGTH, &len);
-        char *message = alloca (len * sizeof (char));
-        glGetShaderInfoLog (id, len, NULL, message);
-
-        printf ("failed to compile %s shader: \"%s\"\n",
-                (type == GL_VERTEX_SHADER ? "vertex" : "fragment"),
-                message);
-
-        glDeleteShader (id);
-        id = 0;
-    }
-
-    return id;
-}
-
-static unsigned int
-create_shader (char *vertex_file, char *fragment_file)
-{
-    unsigned int vert_id = 0;
-    unsigned int frag_id = 0;
-    unsigned int program_id = 0;
-    char *vertex_source = read_file_to_str (vertex_file);
-    char *fragment_source = read_file_to_str (fragment_file);
-
-    if (vertex_source && fragment_source)
-    {
-        vert_id = compile_shader (GL_VERTEX_SHADER, vertex_source);
-        frag_id = compile_shader (GL_FRAGMENT_SHADER, fragment_source);
-        program_id = glCreateProgram ();
-
-        glAttachShader (program_id, vert_id);
-        glAttachShader (program_id, frag_id);
-        glLinkProgram (program_id);
-        glValidateProgram (program_id);
-
-        int result;
-        glGetProgramiv (program_id, GL_LINK_STATUS, &result);
-        if (result == GL_FALSE)
-        {
-            int len;
-            glGetProgramiv (program_id, GL_INFO_LOG_LENGTH, &len);
-            char *message = alloca (len * sizeof (char));
-            glGetProgramInfoLog (program_id, len, NULL, message);
-
-            printf ("failed to link shader program: \"%s\"\n", message);
-
-            program_id = 0;
-        }
-
-        glDetachShader (program_id, vert_id);
-        glDetachShader (program_id, frag_id);
-
-        glDeleteShader (vert_id);
-        glDeleteShader (frag_id);
-    }
-
-    if (vertex_source) free (vertex_source);
-    if (fragment_source) free (fragment_source);
-
-    return program_id;
-}
 
 static void
 handle_os_events (void)
@@ -244,14 +160,19 @@ main (int argc, char **argv)
 
     SDL_Init (SDL_INIT_EVERYTHING);
 
+    SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute (SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+
     SDL_GL_SetAttribute (SDL_GL_RED_SIZE, 8);
     SDL_GL_SetAttribute (SDL_GL_GREEN_SIZE, 8);
     SDL_GL_SetAttribute (SDL_GL_BLUE_SIZE, 8);
     SDL_GL_SetAttribute (SDL_GL_ALPHA_SIZE, 8);
+
     SDL_GL_SetAttribute (SDL_GL_BUFFER_SIZE, 32);
     SDL_GL_SetAttribute (SDL_GL_DOUBLEBUFFER, 1);
 
-    SDL_Window *window = SDL_CreateWindow ("opengl",
+    SDL_Window *window = SDL_CreateWindow ("opengl-app",
                                            SDL_WINDOWPOS_CENTERED,
                                            SDL_WINDOWPOS_CENTERED,
                                            width, height,
@@ -259,24 +180,42 @@ main (int argc, char **argv)
     SDL_GLContext *glctx = SDL_GL_CreateContext (window);
 
     glewInit ();
+    SDL_GL_SetSwapInterval (1); // vsync
 
     printf ("hello opengl (%s)\n", glGetString (GL_VERSION));
 
     // z sorting
-    glEnable (GL_DEPTH_TEST);
-    glDepthFunc (GL_LESS);
+    GLCALL (glEnable (GL_DEPTH_TEST));
+    GLCALL (glDepthFunc (GL_LESS));
+    GLCALL (glEnable (GL_BLEND));
+    GLCALL (glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
 
-    // cube vertex buffer
-    unsigned int vertex_buffer;
-    glGenBuffers (1, &vertex_buffer);
-    glBindBuffer (GL_ARRAY_BUFFER, vertex_buffer);
-    // glBufferData (GL_ARRAY_BUFFER, sizeof (g__triangle_vertices), g__triangle_vertices, GL_STATIC_DRAW);
-    glBufferData (GL_ARRAY_BUFFER, sizeof (g__cube_vertices), g__cube_vertices, GL_STATIC_DRAW);
 
-    glEnableVertexAttribArray (0);
-    glVertexAttribPointer (0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    // create vao
+    struct vertex_array vao = {0};
+    va_create (&vao);
 
-    // colour buffer
+    // create vbo
+    struct vertex_buffer vbo = {0};
+    vb_create (&vbo, g__square_vertices, 4 * 4 * sizeof (float));
+
+    // create layout
+    struct vb_layout layout = {0};
+    vb_layout_create (&layout);
+
+    // push 2 floats to layout
+    vb_layout_push_f (&layout, 2);
+    vb_layout_push_f (&layout, 2);
+
+    // add layout to vao
+    va_add_vb_layout (&vao, &vbo, &layout);
+
+    // create ibo
+    struct index_buffer ibo = {0};
+    ib_create (&ibo, g__square_indices, 6);
+
+#if 0
+    /* colour vertex buffer */
     unsigned int colour_buffer;
     glGenBuffers (1, &colour_buffer);
     glBindBuffer (GL_ARRAY_BUFFER, colour_buffer);
@@ -284,11 +223,14 @@ main (int argc, char **argv)
 
     glEnableVertexAttribArray (1);
     glVertexAttribPointer (1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+#endif
 
-    // shaders
-    unsigned int shader_program_id = create_shader ("data/vertex.shader", "data/fragment.shader");
-    unsigned int matrix_id = glGetUniformLocation (shader_program_id, "MVP");
+    struct shader shader = {0};;
+    shader_create (&shader, "data/vertex.shader", "data/fragment.shader");
+    shader_bind (&shader);
+//    shader_set_uniform_4f (&shader, "u_colour", 0.8f, 0.3f, 0.8f, 1.0f);
 
+    // 3D projection madness
     mat4_t projection = m4_perspective (45.0f, (float) width / (float) height, 0.1f, 100.0f);
     mat4_t view = m4_look_at (vec3 (4, 3, 3),
                               vec3 (0, 0, 0),
@@ -296,25 +238,51 @@ main (int argc, char **argv)
     mat4_t model = m4_identity ();
     mat4_t mvp = m4_mul(m4_mul (projection, view), model);
 
-    glUseProgram (shader_program_id);
+//    shader_set_uniform_m4f (&shader, "mvp", &mvp.m[0][0]);
+
+    struct texture tex = {0};
+    texture_create (&tex, "data/tifa.png");
+    texture_bind (&tex, 0);
+    shader_set_uniform_1i (&shader, "u_texture", 0);
+
+    // clear bindings
+    va_unbind ();
+    vb_unbind ();
+    ib_unbind ();
+    shader_unbind ();
+
+    struct renderer renderer = {0};
+
+    // animating colour uniform
+    float r = 0.0f;
+    float increment = 0.05f;
 
     while (g__running)
     {
         handle_os_events ();
 
-        // compute_matrix_from_input ();
+        renderer_clear ();
 
-        glClearColor (0.0f, 0.15f, 0.3f, 1.0f);
-        glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        shader_bind (&shader);
+//        shader_set_uniform_4f (&shader, "u_colour", r, 0.3f, 0.8f, 1.0f);
+        shader_set_uniform_m4f (&shader, "mvp", &mvp.m[0][0]);
 
-        glUniformMatrix4fv (matrix_id, 1, GL_FALSE, &mvp.m[0][0]);
-        // glDrawArrays (GL_TRIANGLES, 0, sizeof (g__triangle_vertices));
-        glDrawArrays (GL_TRIANGLES, 0, sizeof (g__cube_vertices));
+        renderer_draw (&renderer, &vao, &ibo, &shader);
+
+        if (r > 1.0f)
+        {
+            increment = -0.05f;
+        }
+        else if (r < 0.0f)
+        {
+            increment = 0.05f;
+        }
+        r += increment;
 
         SDL_GL_SwapWindow (window);
     }
 
-    glDeleteProgram (shader_program_id);
+    shader_delete (&shader);
 
     SDL_GL_DeleteContext (glctx);
     SDL_DestroyWindow (window);

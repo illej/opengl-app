@@ -54,3 +54,5 @@ dkms.conf
 # External headers
 include/GL
 include/SDL2
+.*
+*~

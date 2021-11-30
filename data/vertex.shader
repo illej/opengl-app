@@ -1,13 +1,15 @@
 #version 330 core
 
 layout(location = 0) in vec4 position;
-layout(location = 1) in vec3 colour;
-uniform mat4 MVP;
+layout(location = 1) in vec2 texture_coords;
 
-out vec3 fragment_colour;
+out vec2 v_texture_coords;
+
+uniform mat4 mvp;
 
 void main()
 {
-    gl_Position = MVP * position;
-    fragment_colour = colour;
+    gl_Position = mvp * position;
+    v_texture_coords = texture_coords;
 }
+
