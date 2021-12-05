@@ -5,12 +5,13 @@
 #include <GL/glew.h>
 
 #define ARRAY_LEN(arr) (sizeof ((arr)) / sizeof ((arr)[0]))
-#define ASSERT(expr) if (!(expr)) { printf ("Assertion failed at %s(%d): %s\n", __func__, __LINE__, #expr); *(int *) 0 = 0; }
 
 #if DEBUG
+  #define ASSERT(expr) if (!(expr)) { printf ("Assertion failed at %s %s(%d): %s\n", __FILE__, __func__, __LINE__, #expr); *(int *) 0 = 0; }
   #define GLCALL(expr) expr; ASSERT (gl_check_error (#expr, __FILE__, __LINE__))
 #else
-  #define GLCALL(expr) expr;
+  #define ASSERT(expr)
+  #define GLCALL(expr) expr
 #endif
 
 bool

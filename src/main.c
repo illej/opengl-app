@@ -11,7 +11,24 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#define NK_INCLUDE_FIXED_TYPES
+#define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_STANDARD_VARARGS
+#define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
+#define NK_IMPLEMENTATION
+#define NK_SDL_GL3_IMPLEMENTATION
+#include <nuklear.h>
+#include <nuklear_sdl_gl3.h>
+
+#define MAX_VERTEX_MEMORY 512 * 1024
+#define MAX_ELEMENT_MEMORY 128 * 1024
+
 #include "renderer.h"
+#include <test.h>
+#include <test.c>
 
 /*
  * TODO: replace 'unsigned int' with 'u32'
@@ -23,16 +40,7 @@ static float g__triangle_vertices[] = {
     1.0f, -1.0f, 0.0f,
     0.0f, 1.0f, 0.0f
 };
-static float g__square_vertices[] = {
-    -0.5f, -0.5f, 0.0f, 0.0f, // 0 (anti-clockwise, bottom-left)
-     0.5f, -0.5f, 1.0f, 0.0f, // 1
-     0.5f,  0.5f, 1.0f, 1.0f, // 2
-    -0.5f,  0.5f, 0.0f, 1.0f  // 3
-};
-static unsigned int g__square_indices[] = {
-    0, 1, 2, // bottom-left triangle
-    2, 3, 0  // top-right triangle
-};
+
 static float g__cube_vertices[] = {
     -1.0f,-1.0f,-1.0f, // triangle 1 : begin
     -1.0f,-1.0f, 1.0f,
@@ -121,12 +129,12 @@ handle_os_events (void)
         {
             case SDL_QUIT:
             {
-                SDL_Log ("quit received");
+                // SDL_Log ("quit received");
                 g__running = false;
             } break;
             case SDL_KEYDOWN:
             {
-                SDL_Log ("keydown");
+                // SDL_Log ("keydown");
 
                 SDL_Keycode code = event.key.keysym.sym;
                 if (code == SDLK_ESCAPE)
@@ -142,11 +150,11 @@ handle_os_events (void)
             } break;
             case SDL_TEXTINPUT:
             {
-                SDL_Log("TEXTINPUT event received");
+                // SDL_Log("TEXTINPUT event received");
             } break;
             case SDL_TEXTEDITING:
             {
-                SDL_Log("TEXTEDITING event received");
+                // SDL_Log("TEXTEDITING event received");
             } break;
         }
     }
@@ -158,6 +166,7 @@ main (int argc, char **argv)
     int width = 800;
     int height = 600;
 
+    /* Init SDL */
     SDL_Init (SDL_INIT_EVERYTHING);
 
     SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -178,41 +187,32 @@ main (int argc, char **argv)
                                            width, height,
                                            SDL_WINDOW_OPENGL);
     SDL_GLContext *glctx = SDL_GL_CreateContext (window);
-
-    glewInit ();
     SDL_GL_SetSwapInterval (1); // vsync
+
+    /* Init OpenGL */
+    glewInit ();
+
+    /* Init GUI */
+    struct nk_context *nkctx = nk_sdl_init (window);
+    struct nk_colorf bg;
+    {
+        struct nk_font_atlas *atlas;
+        nk_sdl_font_stash_begin (&atlas);
+        nk_sdl_font_stash_end ();
+        bg.r = 0.10f;
+        bg.g = 0.18f;
+        bg.b = 0.24f;
+        bg.a = 1.0f;
+    }
 
     printf ("hello opengl (%s)\n", glGetString (GL_VERSION));
 
     // z sorting
     GLCALL (glEnable (GL_DEPTH_TEST));
     GLCALL (glDepthFunc (GL_LESS));
+    // alpha blending
     GLCALL (glEnable (GL_BLEND));
     GLCALL (glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-
-
-    // create vao
-    struct vertex_array vao = {0};
-    va_create (&vao);
-
-    // create vbo
-    struct vertex_buffer vbo = {0};
-    vb_create (&vbo, g__square_vertices, 4 * 4 * sizeof (float));
-
-    // create layout
-    struct vb_layout layout = {0};
-    vb_layout_create (&layout);
-
-    // push 2 floats to layout
-    vb_layout_push_f (&layout, 2);
-    vb_layout_push_f (&layout, 2);
-
-    // add layout to vao
-    va_add_vb_layout (&vao, &vbo, &layout);
-
-    // create ibo
-    struct index_buffer ibo = {0};
-    ib_create (&ibo, g__square_indices, 6);
 
 #if 0
     /* colour vertex buffer */
@@ -225,12 +225,9 @@ main (int argc, char **argv)
     glVertexAttribPointer (1, 3, GL_FLOAT, GL_FALSE, 0, 0);
 #endif
 
-    struct shader shader = {0};;
-    shader_create (&shader, "data/vertex.shader", "data/fragment.shader");
-    shader_bind (&shader);
-//    shader_set_uniform_4f (&shader, "u_colour", 0.8f, 0.3f, 0.8f, 1.0f);
 
     // 3D projection madness
+#if 0
     mat4_t projection = m4_perspective (45.0f, (float) width / (float) height, 0.1f, 100.0f);
     mat4_t view = m4_look_at (vec3 (4, 3, 3),
                               vec3 (0, 0, 0),
@@ -238,12 +235,12 @@ main (int argc, char **argv)
     mat4_t model = m4_identity ();
     mat4_t mvp = m4_mul(m4_mul (projection, view), model);
 
-//    shader_set_uniform_m4f (&shader, "mvp", &mvp.m[0][0]);
+    shader_set_uniform_m4f (&shader, "u_mvp", &mvp.m[0][0]);
+#endif
 
-    struct texture tex = {0};
-    texture_create (&tex, "data/tifa.png");
-    texture_bind (&tex, 0);
-    shader_set_uniform_1i (&shader, "u_texture", 0);
+    struct test_data t = {0};
+    int type = TEST_3D_CUBE;
+    test_setup (type, &t);
 
     // clear bindings
     va_unbind ();
@@ -253,37 +250,45 @@ main (int argc, char **argv)
 
     struct renderer renderer = {0};
 
-    // animating colour uniform
-    float r = 0.0f;
-    float increment = 0.05f;
-
     while (g__running)
     {
+#if 1 
+        SDL_Event event;
+
+        nk_input_begin (nkctx);
+        while (SDL_PollEvent (&event))
+        {
+            switch (event.type)
+            {
+                case SDL_QUIT:
+                {
+                    g__running = false;
+                } break;
+                case SDL_KEYDOWN:
+                {
+                    if (event.key.keysym.sym == SDLK_ESCAPE)
+                    {
+                        g__running = false;
+                    }
+                } break;
+            }
+            nk_sdl_handle_event (&event);
+        }
+        nk_input_end (nkctx);
+#else
         handle_os_events ();
+#endif
 
-        renderer_clear ();
-
-        shader_bind (&shader);
-//        shader_set_uniform_4f (&shader, "u_colour", r, 0.3f, 0.8f, 1.0f);
-        shader_set_uniform_m4f (&shader, "mvp", &mvp.m[0][0]);
-
-        renderer_draw (&renderer, &vao, &ibo, &shader);
-
-        if (r > 1.0f)
-        {
-            increment = -0.05f;
-        }
-        else if (r < 0.0f)
-        {
-            increment = 0.05f;
-        }
-        r += increment;
+        test_update (&t, 0.0f);
+        test_render (&t);
+        test_render_gui (&t, nkctx);
 
         SDL_GL_SwapWindow (window);
     }
 
-    shader_delete (&shader);
+    test_teardown (&t);
 
+    nk_sdl_shutdown ();
     SDL_GL_DeleteContext (glctx);
     SDL_DestroyWindow (window);
     SDL_Quit ();

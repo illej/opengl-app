@@ -10,6 +10,7 @@ struct vertex_buffer
 
 struct vb_element
 {
+    struct vertex_buffer *vbo; // TODO: this is bad lol
     unsigned int count;
     unsigned int type;
     unsigned char normalised;
@@ -44,13 +45,14 @@ vb_layout_create (struct vb_layout *layout)
 }
 
 static bool
-__vb_layout_push (struct vb_layout *layout, unsigned int count, unsigned int type, unsigned char normalised)
+__vb_layout_push (struct vb_layout *layout, struct vertex_buffer *vbo, unsigned int count, unsigned int type, unsigned char normalised)
 {
     bool ok = false;
 
     if (layout->element_count + 1 < ARRAY_LEN (layout->elements))
     {
         struct vb_element *e = &layout->elements[layout->element_count++];
+        e->vbo = vbo;
         e->count = count;
         e->type = type;
         e->normalised = normalised;
@@ -66,9 +68,9 @@ __vb_layout_push (struct vb_layout *layout, unsigned int count, unsigned int typ
 }
 
 void
-vb_layout_push_f (struct vb_layout *layout, unsigned int count)
+vb_layout_push_f (struct vb_layout *layout, struct vertex_buffer *vbo, unsigned int count)
 {
-    if (__vb_layout_push (layout, count, GL_FLOAT, GL_FALSE))
+    if (__vb_layout_push (layout, vbo, count, GL_FLOAT, GL_FALSE))
     {
         layout->stride += vb_element_type_size (GL_FLOAT) * count;
     }
@@ -77,7 +79,7 @@ vb_layout_push_f (struct vb_layout *layout, unsigned int count)
 void
 vb_layout_push_uint (struct vb_layout *layout, unsigned int count)
 {
-    if (__vb_layout_push (layout, count, GL_UNSIGNED_INT, GL_FALSE))
+    if (__vb_layout_push (layout, 0, count, GL_UNSIGNED_INT, GL_FALSE))
     {
         layout->stride += vb_element_type_size (GL_UNSIGNED_INT) * count;
     }
@@ -86,7 +88,7 @@ vb_layout_push_uint (struct vb_layout *layout, unsigned int count)
 void
 vb_layout_push_uchar (struct vb_layout *layout, unsigned int count)
 {
-    if (__vb_layout_push (layout, count, GL_UNSIGNED_BYTE, GL_TRUE))
+    if (__vb_layout_push (layout, 0, count, GL_UNSIGNED_BYTE, GL_TRUE))
     {
         layout->stride += vb_element_type_size (GL_UNSIGNED_BYTE) * count;
     }

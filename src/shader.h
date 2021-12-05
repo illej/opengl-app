@@ -182,13 +182,13 @@ shader_get_uniform_location (struct shader *shader, char *name)
 
         if (shader->cache_len + 1 < ARRAY_LEN (shader->uniform_location_cache))
         {
-            printf ("cache entry not found for %s\n", name);
+//            printf ("cache entry not found for %s\n", name);
 
             struct uniform_location_cache_entry *e = &shader->uniform_location_cache[shader->cache_len++];
             snprintf (e->name, 32, "%s", name);
             e->location = location;
 
-            printf ("entry added (%u)\n", shader->cache_len);
+//            printf ("entry added (%u)\n", shader->cache_len);
         }
         else
         {
