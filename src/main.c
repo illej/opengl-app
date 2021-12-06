@@ -41,7 +41,17 @@ static float g__triangle_vertices[] = {
     0.0f, 1.0f, 0.0f
 };
 
-static float g__cube_vertices[] = {
+struct cube
+{
+    struct shader shader;
+    mat4_t mvp;
+    GLuint triangle_count;
+    GLuint vao;
+    GLuint vert_vbo;
+    GLuint colour_vbo;
+};
+
+static GLfloat cube_verts[] = {
     -1.0f,-1.0f,-1.0f, // triangle 1 : begin
     -1.0f,-1.0f, 1.0f,
     -1.0f, 1.0f, 1.0f, // triangle 1 : end
@@ -79,7 +89,7 @@ static float g__cube_vertices[] = {
     -1.0f, 1.0f, 1.0f,
     1.0f,-1.0f, 1.0f
 };
-static float g__cube_colour_data[] = {
+static GLfloat cube_colours[] = {
     0.583f,  0.771f,  0.014f,
     0.609f,  0.115f,  0.436f,
     0.327f,  0.483f,  0.844f,
@@ -119,10 +129,80 @@ static float g__cube_colour_data[] = {
 };
 
 static void
-handle_os_events (void)
+cube_3d_setup (struct cube *cube, int width, int height)
+{
+    printf ("creating vao\n");
+    GLuint vao;
+    GLCALL (glGenVertexArrays (1, &vao));
+    GLCALL (glBindVertexArray (vao));
+    cube->vao = vao;
+
+    printf ("creating vert vbo\n");
+    GLuint vert_vbo;
+    GLCALL (glGenBuffers (1, &vert_vbo));
+    GLCALL (glBindBuffer (GL_ARRAY_BUFFER, vert_vbo));
+    GLCALL (glBufferData (GL_ARRAY_BUFFER, sizeof (cube_verts), cube_verts, GL_STATIC_DRAW));
+    cube->vert_vbo = vert_vbo;
+
+    printf ("creating colour vbo\n");
+    GLuint colour_vbo;
+    GLCALL (glGenBuffers (1, &colour_vbo));
+    GLCALL (glBindBuffer (GL_ARRAY_BUFFER, colour_vbo));
+    GLCALL (glBufferData (GL_ARRAY_BUFFER, sizeof (cube_colours), cube_colours, GL_STATIC_DRAW));
+    cube->colour_vbo = colour_vbo;
+
+    printf ("enabling vao 0\n");
+    GLCALL (glEnableVertexAttribArray (0));
+    GLCALL (glBindBuffer (GL_ARRAY_BUFFER, vert_vbo));
+    GLCALL (glVertexAttribPointer (0, 3, GL_FLOAT, GL_FALSE, 0, 0));
+
+    printf ("enabling vao 1\n");
+    GLCALL (glEnableVertexAttribArray (1));
+    GLCALL (glBindBuffer (GL_ARRAY_BUFFER, colour_vbo));
+    GLCALL (glVertexAttribPointer (1, 3, GL_FLOAT, GL_FALSE, 0, 0));
+
+    printf ("creating shader\n");
+    shader_create (&cube->shader, "data/cube.vs", "data/cube.fs");
+    shader_bind (&cube->shader);
+
+    printf ("creating 3d projection\n");
+    mat4_t projection = m4_perspective (45.0f, (float) width / (float) height, 0.1f, 100.0f);
+    mat4_t view = m4_look_at (vec3 (4, 3, -3),
+                              vec3 (0, 0, 0),
+                              vec3 (0, 1, 0));
+    mat4_t model = m4_identity ();
+    mat4_t mvp = m4_mul(m4_mul (projection, view), model);
+
+    printf ("setting uniform\n");
+    shader_set_uniform_m4f (&cube->shader, "u_mvp", &mvp.m[0][0]);
+    cube->mvp = mvp;
+
+    cube->triangle_count = 12 * 3;
+}
+
+static void
+cube_3d_render (struct cube *cube)
+{
+    GLCALL (glEnable (GL_DEPTH_TEST));
+    GLCALL (glDepthFunc (GL_LESS));
+    GLCALL (glClearColor (0.1f, 0.1f, 0.1f, 1.0f));
+    GLCALL (glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+
+    GLCALL (glBindVertexArray (cube->vao));
+    shader_bind (&cube->shader);
+    shader_set_uniform_m4f (&cube->shader, "u_mvp", &cube->mvp.m[0][0]);
+
+    GLCALL (glDrawArrays (GL_TRIANGLES, 0, cube->triangle_count));
+
+    GLCALL (glDisable (GL_DEPTH_TEST));
+}
+
+static void
+handle_os_events (struct nk_context *nk)
 {
     SDL_Event event;
 
+   nk_input_begin (nk);
     while (SDL_PollEvent(&event) != 0)
     {
         switch (event.type)
@@ -157,7 +237,10 @@ handle_os_events (void)
                 // SDL_Log("TEXTEDITING event received");
             } break;
         }
+
+       nk_sdl_handle_event (&event);
     }
+   nk_input_end (nk);
 }
 
 int
@@ -190,7 +273,7 @@ main (int argc, char **argv)
     SDL_GL_SetSwapInterval (1); // vsync
 
     /* Init OpenGL */
-    glewInit ();
+    ASSERT (glewInit () == GLEW_OK);
 
     /* Init GUI */
     struct nk_context *nkctx = nk_sdl_init (window);
@@ -207,86 +290,17 @@ main (int argc, char **argv)
 
     printf ("hello opengl (%s)\n", glGetString (GL_VERSION));
 
-    // z sorting
-    GLCALL (glEnable (GL_DEPTH_TEST));
-    GLCALL (glDepthFunc (GL_LESS));
-    // alpha blending
-    GLCALL (glEnable (GL_BLEND));
-    GLCALL (glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-
-#if 0
-    /* colour vertex buffer */
-    unsigned int colour_buffer;
-    glGenBuffers (1, &colour_buffer);
-    glBindBuffer (GL_ARRAY_BUFFER, colour_buffer);
-    glBufferData (GL_ARRAY_BUFFER, sizeof (g__cube_colour_data), g__cube_colour_data, GL_STATIC_DRAW);
-
-    glEnableVertexAttribArray (1);
-    glVertexAttribPointer (1, 3, GL_FLOAT, GL_FALSE, 0, 0);
-#endif
-
-
-    // 3D projection madness
-#if 0
-    mat4_t projection = m4_perspective (45.0f, (float) width / (float) height, 0.1f, 100.0f);
-    mat4_t view = m4_look_at (vec3 (4, 3, 3),
-                              vec3 (0, 0, 0),
-                              vec3 (0, 1, 0));
-    mat4_t model = m4_identity ();
-    mat4_t mvp = m4_mul(m4_mul (projection, view), model);
-
-    shader_set_uniform_m4f (&shader, "u_mvp", &mvp.m[0][0]);
-#endif
-
-    struct test_data t = {0};
-    int type = TEST_3D_CUBE;
-    test_setup (type, &t);
-
-    // clear bindings
-    va_unbind ();
-    vb_unbind ();
-    ib_unbind ();
-    shader_unbind ();
-
-    struct renderer renderer = {0};
+    struct cube cube = {0};
+    cube_3d_setup (&cube, width, height);
 
     while (g__running)
     {
-#if 1 
-        SDL_Event event;
+        handle_os_events (nkctx);
 
-        nk_input_begin (nkctx);
-        while (SDL_PollEvent (&event))
-        {
-            switch (event.type)
-            {
-                case SDL_QUIT:
-                {
-                    g__running = false;
-                } break;
-                case SDL_KEYDOWN:
-                {
-                    if (event.key.keysym.sym == SDLK_ESCAPE)
-                    {
-                        g__running = false;
-                    }
-                } break;
-            }
-            nk_sdl_handle_event (&event);
-        }
-        nk_input_end (nkctx);
-#else
-        handle_os_events ();
-#endif
-
-        test_update (&t, 0.0f);
-        test_render (&t);
-        test_render_gui (&t, nkctx);
+        cube_3d_render (&cube);
 
         SDL_GL_SwapWindow (window);
     }
-
-    test_teardown (&t);
 
     nk_sdl_shutdown ();
     SDL_GL_DeleteContext (glctx);

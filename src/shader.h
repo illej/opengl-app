@@ -202,15 +202,13 @@ shader_get_uniform_location (struct shader *shader, char *name)
 void
 shader_set_uniform_4f (struct shader *shader, char *name, float v0, float v1, float v2, float v3)
 {
-    int location = shader_get_uniform_location (shader, name);
-    GLCALL (glUniform4f (location, v0, v1, v2, v3));
+    GLCALL (glUniform4f (shader_get_uniform_location (shader, name), v0, v1, v2, v3));
 }
 
 void
 shader_set_uniform_m4f (struct shader *shader, char *name, float *fptr)
 {
-    int location = shader_get_uniform_location (shader, name);
-    GLCALL (glUniformMatrix4fv (location, 1, GL_FALSE, fptr));
+    GLCALL (glUniformMatrix4fv (shader_get_uniform_location (shader, name), 1, GL_FALSE, fptr));
 }
 
 void
